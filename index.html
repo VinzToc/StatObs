@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- PWA -->
+    <meta name="theme-color" content="#667eea">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Observation EPS">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Observation & Statistiques du sportif - Accueil</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 540px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        /* ── Observable row ── */
+        .observable-inputs {
+            margin-top: 20px;
+        }
+
+        .observable-item {
+            display: none;
+            margin-bottom: 15px;
+        }
+
+        .observable-item.active {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.3s;
+        }
+
+        .observable-item .item-label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+
+        .observable-item .input-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .observable-item input[type="text"] {
+            width: 100%;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Polarity toggle ── */
+        .polarity-toggle {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .polarity-toggle .toggle-label {
+            font-size: 0.72em;
+            font-weight: 700;
+            color: #888;
+            white-space: nowrap;
+        }
+
+        /* Hide native checkbox */
+        .polarity-toggle input[type="checkbox"] {
+            display: none;
+        }
+
+        /* The visible switch */
+        .toggle-switch {
+            position: relative;
+            width: 64px;
+            height: 30px;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: background 0.3s;
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+        }
+
+        .toggle-knob {
+            position: absolute;
+            left: 3px;
+            width: 24px;
+            height: 24px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+        }
+
+        .toggle-knob::after {
+            content: '✓';
+            color: #43e97b;
+            font-weight: 700;
+        }
+
+        /* Checked = négatif (rouge) */
+        .polarity-toggle input[type="checkbox"]:checked + .toggle-switch {
+            background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+        }
+
+        .polarity-toggle input[type="checkbox"]:checked + .toggle-switch .toggle-knob {
+            transform: translateX(34px);
+        }
+
+        .polarity-toggle input[type="checkbox"]:checked + .toggle-switch .toggle-knob::after {
+            content: '✕';
+            color: #f5576c;
+        }
+
+        .toggle-text {
+            position: absolute;
+            font-size: 0.6em;
+            font-weight: 700;
+            color: white;
+            transition: opacity 0.3s;
+        }
+
+        /* Positive label (left side, visible when unchecked) */
+        .toggle-text.pos {
+            left: 32px;
+            opacity: 1;
+        }
+
+        /* Negative label (right side, visible when checked) */
+        .toggle-text.neg {
+            left: 6px;
+            opacity: 0;
+        }
+
+        .polarity-toggle input[type="checkbox"]:checked + .toggle-switch .toggle-text.pos {
+            opacity: 0;
+        }
+
+        .polarity-toggle input[type="checkbox"]:checked + .toggle-switch .toggle-text.neg {
+            opacity: 1;
+        }
+
+        /* ── Legend ── */
+        .polarity-legend {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 12px;
+            margin-bottom: 4px;
+            font-size: 0.82em;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #555;
+            font-weight: 600;
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.positive { background: linear-gradient(135deg, #43e97b, #38f9d7); }
+        .legend-dot.negative { background: linear-gradient(135deg, #f5576c, #f093fb); }
+
+        /* ── Submit ── */
+        .start-button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 30px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .start-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(245, 87, 108, 0.4);
+        }
+
+        .start-button:active {
+            transform: translateY(0);
+        }
+
+        @media (max-width: 600px) {
+            .container { padding: 20px; }
+            h1 { font-size: 1.3em; }
+        }
+
+        /* ── Bouton d'installation PWA ── */
+        .install-button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 15px;
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .install-button[hidden] { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Observation du sportif lors de sa pratique en EPS</h1>
+        </header>
+
+        <form id="configForm">
+            <div class="form-group">
+                <label for="observateur">Nom de l'observateur :</label>
+                <input type="text" id="observateur" required>
+            </div>
+
+            <div class="form-group">
+                <label for="joueur">Nom du pratiquant observé :</label>
+                <input type="text" id="joueur" required>
+            </div>
+
+            <div class="form-group">
+                <label for="activite">Activité pratiquée :</label>
+                <input type="text" id="activite" required>
+            </div>
+
+            <div class="form-group">
+                <label for="nbObservables">Choix du nombre d'observables :</label>
+                <!-- ① Limité à 8 -->
+                <select id="nbObservables" required>
+                    <option value="">-- Sélectionnez --</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                </select>
+            </div>
+
+            <div class="observable-inputs" id="observableInputs">
+
+                <!-- Légende des toggles -->
+                <div class="polarity-legend" id="polarityLegend" style="display:none;">
+                    <div class="legend-item">
+                        <div class="legend-dot positive"></div>
+                        <span>Point positif</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-dot negative"></div>
+                        <span>Point négatif</span>
+                    </div>
+                </div>
+
+                <!-- ② 8 observables avec toggle polarity -->
+                <div class="observable-item" data-index="1">
+                    <div class="input-wrapper">
+                        <span class="item-label">Observable 1 :</span>
+                        <input type="text" id="item1" class="item-input">
+                    </div>
+                    <div class="polarity-toggle">
+                        <span class="toggle-label">Polarité</span>
+                        <input type="checkbox" id="polarity1">
+                        <label class="toggle-switch" for="polarity1">
+                            <div class="toggle-knob"></div>
+                            <span class="toggle-text pos">+</span>
+                            <span class="toggle-text neg">–</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="observable-item" data-index="2">
+                    <div class="input-wrapper">
+                        <span class="item-label">Observable 2 :</span>
+                        <input type="text" id="item2" class="item-input">
+                    </div>
+                    <div class="polarity-toggle">
+                        <span class="toggle-label">Polarité</span>
+                        <input type="checkbox" id="polarity2">
+                        <label class="toggle-switch" for="polarity2">
+                            <div class="toggle-knob"></div>
+                            <span class="toggle-text pos">+</span>
+                            <span class="toggle-text neg">–</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="observable-item" data-index="3">
+                    <div class="input-wrapper">
+                        <span class="item-label">Observable 3 :</span>
+                        <input type="text" id="item3" class="item-input">
+                    </div>
+                    <div class="polarity-toggle">
+                        <span class="toggle-label">Polarité</span>
+                        <input type="checkbox" id="polarity3">
+                        <label class="toggle-switch" for="polarity3">
+                            <div class="toggle-knob"></div>
+                            <span class="toggle-text pos">+</span>
+                            <span class="toggle-text neg">–</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="observable-item" data-index="4">
+                    <div class="input-wrapper">
+                        <span class="item-label">Observable 4 :</span>
+                        <input type="text" id="item4" class="item-input">
+                    </div>
+                    <div class="polarity-toggle">
+                        <span class="toggle-label">Polarité</span>
+                        <input type="checkbox" id="polarity4">
+                        <label class="toggle-switch" for="polarity4">
+                            <div class="toggle-knob"></div>
+                            <span class="toggle-text pos">+</span>
+                            <span class="toggle-text neg">–</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="observable-item" data-index="5">
+                    <div class="input-wrapper">
+                        <span class="item-label">Observable 5 :</span>
+                        <input type="text" id="item5" class="item-input">
+                    </div>
+                    <div class="polarity-toggle">
+                        <span class="toggle-label">Polarité</span>
+                        <input type="checkbox" id="polarity5">
+                        <label class="toggle-switch" for="polarity5">
+                            <div class="toggle-knob"></div>
+                            <span class="toggle-text pos">+</span>
+                            <span class="toggle-text neg">–</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="observable-item" data-index="6">
+                    <div class="input-wrapper">
+                        <span class="item-label">Observable 6 :</span>
+                        <input type="text" id="item6" class="item-input">
+                    </div>
+                    <div class="polarity-toggle">
+                        <span class="toggle-label">Polarité</span>
+                        <input type="checkbox" id="polarity6">
+                        <label class="toggle-switch" for="polarity6">
+                            <div class="toggle-knob"></div>
+                            <span class="toggle-text pos">+</span>
+                            <span class="toggle-text neg">–</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="observable-item" data-index="7">
+                    <div class="input-wrapper">
+                        <span class="item-label">Observable 7 :</span>
+                        <input type="text" id="item7" class="item-input">
+                    </div>
+                    <div class="polarity-toggle">
+                        <span class="toggle-label">Polarité</span>
+                        <input type="checkbox" id="polarity7">
+                        <label class="toggle-switch" for="polarity7">
+                            <div class="toggle-knob"></div>
+                            <span class="toggle-text pos">+</span>
+                            <span class="toggle-text neg">–</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="observable-item" data-index="8">
+                    <div class="input-wrapper">
+                        <span class="item-label">Observable 8 :</span>
+                        <input type="text" id="item8" class="item-input">
+                    </div>
+                    <div class="polarity-toggle">
+                        <span class="toggle-label">Polarité</span>
+                        <input type="checkbox" id="polarity8">
+                        <label class="toggle-switch" for="polarity8">
+                            <div class="toggle-knob"></div>
+                            <span class="toggle-text pos">+</span>
+                            <span class="toggle-text neg">–</span>
+                        </label>
+                    </div>
+                </div>
+
+            </div>
+
+            <button type="submit" class="start-button">Début de l'observation</button>
+        </form>
+
+        <button type="button" id="installBtn" class="install-button" hidden>📲 Installer l'application</button>
+    </div>
+
+    <script>
+        const nbObservablesSelect = document.getElementById('nbObservables');
+        const observableItems     = document.querySelectorAll('.observable-item');
+        const polarityLegend      = document.getElementById('polarityLegend');
+
+        // ① Affichage dynamique des champs selon le nombre choisi
+        nbObservablesSelect.addEventListener('change', function () {
+            const nb = parseInt(this.value) || 0;
+
+            observableItems.forEach((item, index) => {
+                if (index < nb) {
+                    item.classList.add('active');
+                    item.querySelector('input.item-input').required = true;
+                } else {
+                    item.classList.remove('active');
+                    const inp = item.querySelector('input.item-input');
+                    inp.required = false;
+                    inp.value = '';
+                    // Réinitialiser le toggle à positif
+                    item.querySelector('input[type="checkbox"]').checked = false;
+                }
+            });
+
+            // Afficher la légende seulement si des observables sont visibles
+            polarityLegend.style.display = nb > 0 ? 'flex' : 'none';
+        });
+
+        // ② Soumission : collecte config + polarités
+        document.getElementById('configForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const nb = parseInt(document.getElementById('nbObservables').value);
+
+            const config = {
+                date         : new Date().toLocaleDateString('fr-FR'),
+                observateur  : document.getElementById('observateur').value,
+                joueur       : document.getElementById('joueur').value,
+                activite     : document.getElementById('activite').value,
+                nbObservables: nb,
+                items        : [],
+                // ② Nouveau : tableau de polarités ("positive" | "negative")
+                polarity     : []
+            };
+
+            for (let i = 1; i <= nb; i++) {
+                config.items.push(document.getElementById(`item${i}`).value);
+                // checkbox cochée = négatif
+                const isNegative = document.getElementById(`polarity${i}`).checked;
+                config.polarity.push(isNegative ? 'negative' : 'positive');
+            }
+
+            localStorage.setItem('observationConfig', JSON.stringify(config));
+            localStorage.setItem('startTime', Date.now());
+
+            // Initialisation des compteurs
+            const counts = {};
+            for (let i = 1; i <= nb; i++) {
+                counts[`item${i}`] = 0;
+            }
+            localStorage.setItem('observationCounts', JSON.stringify(counts));
+
+            window.location.href = 'panneau_saisie.html';
+        });
+    </script>
+    <script src="pwa.js"></script>
+</body>
+</html>
