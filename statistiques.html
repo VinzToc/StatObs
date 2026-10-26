@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- PWA -->
+    <meta name="theme-color" content="#667eea">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Observation EPS">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Statistiques - Bilan d'observation du sportif</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        header { text-align: center; margin-bottom: 20px; }
+
+        h1 { color: #667eea; font-size: 1.8em; margin-bottom: 15px; }
+
+        .player-info {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 1.1em;
+        }
+
+        .player-name   { font-weight: 700; font-size: 1.2em; }
+        .observer-text { opacity: 0.9; }
+        .observer-name { font-weight: 600; }
+
+        /* ── Légende radar ── */
+        .radar-legend {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 10px;
+            font-size: 0.85em;
+        }
+
+        .radar-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .radar-legend-dot {
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+        }
+
+        .radar-legend-dot.positive { background: #43e97b; }
+        .radar-legend-dot.negative { background: #f5576c; }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 520px;
+            margin: 0 auto 25px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+        }
+
+        /* ── Tableau de synthèse ── */
+        .stats-table-wrapper {
+            margin-bottom: 25px;
+            overflow-x: auto;
+        }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95em;
+        }
+
+        .stats-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 14px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .stats-table th:first-child { border-radius: 10px 0 0 0; }
+        .stats-table th:last-child  { border-radius: 0 10px 0 0; }
+
+        .stats-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .stats-table tr:last-child td { border-bottom: none; }
+        .stats-table tr:nth-child(even) td { background: #f8f9fa; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.82em;
+            font-weight: 700;
+            color: white;
+        }
+
+        .badge.positive { background: linear-gradient(135deg, #43e97b, #38f9d7); }
+        .badge.negative { background: linear-gradient(135deg, #f5576c, #f093fb); }
+
+        .count-cell {
+            font-weight: 700;
+            font-size: 1.1em;
+            text-align: center;
+        }
+
+        .tag-cell { text-align: center; }
+
+        /* ── Bilan textuel ── */
+        .stats-summary { margin-bottom: 25px; }
+
+        .section-title {
+            color: #667eea;
+            font-size: 1.4em;
+            font-weight: 700;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .analysis-box {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+
+        .analysis-subtitle {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .analysis-content {
+            color: #555;
+            line-height: 1.7;
+            font-size: 1em;
+        }
+
+        .strengths-box  { border-left-color: #43e97b; }
+        .strengths-box  .analysis-subtitle { color: #2ecc71; }
+        .weaknesses-box { border-left-color: #f5576c; }
+        .weaknesses-box .analysis-subtitle { color: #e74c3c; }
+        .critical-box   { border-left-color: #e67e22; }
+        .critical-box   .analysis-subtitle { color: #e67e22; }
+
+        /* ── Bouton ── */
+        .footer-button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: auto;
+            transition: all 0.2s;
+        }
+
+        .footer-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(245, 87, 108, 0.4);
+        }
+
+        .footer-button:active { transform: translateY(0); }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 1.4em; }
+            .player-info { font-size: 0.95em; }
+            .section-title { font-size: 1.2em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Statistiques du sportif</h1>
+        </header>
+
+        <div class="player-info">
+            <span class="player-name"  id="playerName">-</span>
+            <span class="observer-text">observé par</span>
+            <span class="observer-name" id="observerName">-</span>
+        </div>
+
+        <!-- Légende radar -->
+        <div class="radar-legend">
+            <div class="radar-legend-item">
+                <div class="radar-legend-dot positive"></div>
+                <span>Observable positif</span>
+            </div>
+            <div class="radar-legend-item">
+                <div class="radar-legend-dot negative"></div>
+                <span>Observable négatif</span>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="radarChart"></canvas>
+        </div>
+
+        <!-- Tableau de synthèse -->
+        <div class="stats-table-wrapper">
+            <h2 class="section-title">Synthèse des observables</h2>
+            <table class="stats-table" id="statsTable">
+                <thead>
+                    <tr>
+                        <th>Observable</th>
+                        <th style="text-align:center">Type</th>
+                        <th style="text-align:center">Occurrences</th>
+                        <th style="text-align:center">% du total</th>
+                    </tr>
+                </thead>
+                <tbody id="statsTableBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Bilan textuel -->
+        <div class="stats-summary">
+            <h2 class="section-title">Bilan et objectifs</h2>
+
+            <div class="analysis-box strengths-box" id="strengthsBox">
+                <div class="analysis-subtitle">
+                    <span>✓</span><span>Actions positives réalisées et observées</span>
+                </div>
+                <div class="analysis-content" id="strengthsText">Analyse en cours...</div>
+            </div>
+
+            <!-- Zone "point critique" : observable négatif très fréquent -->
+            <div class="analysis-box critical-box" id="criticalBox" style="display:none;">
+                <div class="analysis-subtitle">
+                    <span>⚡</span><span>Point(s) critique(s) à travailler en priorité</span>
+                </div>
+                <div class="analysis-content" id="criticalText"></div>
+            </div>
+
+            <div class="analysis-box weaknesses-box" id="weaknessesBox">
+                <div class="analysis-subtitle">
+                    <span>⚠</span><span>Points d'attention</span>
+                </div>
+                <div class="analysis-content" id="weaknessesText">Analyse en cours...</div>
+            </div>
+        </div>
+
+        <button class="footer-button" id="newAnalysisBtn">Nouvelle analyse ?</button>
+    </div>
+
+    <script>
+        // ── Récupération des données ──────────────────────────────────────────
+        const finalData = JSON.parse(localStorage.getItem('observationFinalData'));
+
+        if (!finalData) {
+            alert('Erreur : Aucune donnée trouvée. Retour à la page d\'accueil.');
+            window.location.href = 'index.html';
+        }
+
+        document.getElementById('playerName').textContent  = finalData.joueur;
+        document.getElementById('observerName').textContent = finalData.observateur;
+
+        // Assurer la rétrocompatibilité si polarity absent (ancien format)
+        const polarity = finalData.polarity || finalData.items.map(() => 'positive');
+
+        // ── Préparation des données ───────────────────────────────────────────
+        const labels       = [];
+        const data         = [];
+        const totalActions = [];
+
+        for (let i = 1; i <= finalData.nbObservables; i++) {
+            labels.push(finalData.items[i - 1]);
+            const count = finalData.counts[`item${i}`] || 0;
+            data.push(count);
+            totalActions.push({
+                label   : finalData.items[i - 1],
+                count   : count,
+                polarity: polarity[i - 1] || 'positive'
+            });
+        }
+
+        const totalCount = data.reduce((a, b) => a + b, 0);
+
+        // ── Tableau de synthèse ───────────────────────────────────────────────
+        const tbody = document.getElementById('statsTableBody');
+        // Tri : positifs d'abord, puis négatifs ; au sein de chaque groupe, par count décroissant
+        const sortedForTable = [...totalActions].sort((a, b) => {
+            if (a.polarity !== b.polarity) return a.polarity === 'positive' ? -1 : 1;
+            return b.count - a.count;
+        });
+
+        sortedForTable.forEach(action => {
+            const pct = totalCount > 0 ? ((action.count / totalCount) * 100).toFixed(1) : '0.0';
+            const isNeg = action.polarity === 'negative';
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${action.label}</td>
+                <td class="tag-cell">
+                    <span class="badge ${isNeg ? 'negative' : 'positive'}">
+                        ${isNeg ? '– Négatif' : '+ Positif'}
+                    </span>
+                </td>
+                <td class="count-cell">${action.count}</td>
+                <td class="count-cell">${pct} %</td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        // ── Graphique radar avec points colorés individuellement ─────────────
+        const pointColors = totalActions.map(a =>
+            a.polarity === 'negative'
+                ? 'rgba(245, 87, 108, 1)'
+                : 'rgba(67, 233, 123, 1)'
+        );
+        const pointBgColors = totalActions.map(a =>
+            a.polarity === 'negative'
+                ? 'rgba(245, 87, 108, 0.8)'
+                : 'rgba(67, 233, 123, 0.8)'
+        );
+
+        // Fond mixte : on utilise une couleur neutre pour l'aire
+        let radarChart = null;
+        if (typeof Chart === 'undefined') {
+            // Chart.js pas encore en cache et pas de réseau
+            document.querySelector('.chart-container').innerHTML =
+                '<p style="text-align:center;color:#888">Graphique indisponible hors ligne. Ouvrez l\'application une fois avec une connexion pour le charger.</p>';
+        } else {
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label                  : 'Nombre d\'actions',
+                    data                   : data,
+                    backgroundColor        : 'rgba(102, 126, 234, 0.15)',
+                    borderColor            : 'rgba(102, 126, 234, 0.6)',
+                    borderWidth            : 2,
+                    pointBackgroundColor   : pointBgColors,   // ④ couleur individuelle
+                    pointBorderColor       : pointColors,      // ④
+                    pointHoverBackgroundColor: pointColors,
+                    pointHoverBorderColor  : '#fff',
+                    pointRadius            : 7,
+                    pointHoverRadius       : 9
+                }]
+            },
+            options: {
+                responsive       : true,
+                maintainAspectRatio: true,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 },
+                        pointLabels: {
+                            font: { size: 12, weight: 'bold' },
+                            // ④ Colorier les labels selon la polarité
+                            color: (ctx) => {
+                                const idx = ctx.index;
+                                return polarity[idx] === 'negative' ? '#f5576c' : '#43e97b';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    title : {
+                        display: true,
+                        text   : `Analyse des ${totalCount} actions observées`,
+                        font   : { size: 16, weight: 'bold' },
+                        color  : '#667eea'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const idx = context.dataIndex;
+                                const pol = polarity[idx] === 'negative' ? 'Négatif' : 'Positif';
+                                return ` ${context.raw} action(s)  [${pol}]`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        }
+
+        // ── Analyse textuelle : tag + fréquence ──────────────────────────────
+        function generateAnalysis() {
+            const positiveActions = totalActions.filter(a => a.polarity === 'positive');
+            const negativeActions = totalActions.filter(a => a.polarity === 'negative');
+
+            const avgPositive = positiveActions.length
+                ? positiveActions.reduce((s, a) => s + a.count, 0) / positiveActions.length
+                : 0;
+            const avgNegative = negativeActions.length
+                ? negativeActions.reduce((s, a) => s + a.count, 0) / negativeActions.length
+                : 0;
+
+            // --- POINTS FORTS : observables positifs, triés par fréquence ---
+            let strengthsText = '';
+            if (positiveActions.length > 0) {
+                const sorted = [...positiveActions].sort((a, b) => b.count - a.count);
+                const top    = sorted.filter(a => a.count > 0).slice(0, 3);
+                if (top.length > 0) {
+                    strengthsText = `<strong>${finalData.joueur}</strong> est plus efficace sur les points suivants : `;
+                    strengthsText += top.map(a => `<strong>${a.label}</strong> (${a.count} fois)`).join(', ');
+                    strengthsText += `. Ces actions constituent ses points forts.`;
+                    // Si certains positifs n'ont jamais été observés
+                    const absent = positiveActions.filter(a => a.count === 0);
+                    if (absent.length > 0) {
+                        strengthsText += ` <em>À noter : les actions positives suivantes n'ont pas été observées : `;
+                        strengthsText += absent.map(a => `<strong>${a.label}</strong>`).join(', ') + `.</em>`;
+                    }
+                } else {
+                    strengthsText = `Aucune action positive observable n'a été mise en oeuvre durant cette session.`;
+                }
+            } else {
+                strengthsText = `Aucun observable de type positif n'a été défini pour cette session.`;
+            }
+
+            // --- POINT CRITIQUE : observable négatif avec fréquence élevée ---
+            let criticalText = '';
+            const criticalThreshold = avgNegative * 1.5; // 50 % au-dessus de la moyenne des négatifs
+            const criticalActions   = negativeActions
+                .filter(a => a.count > 0 && a.count >= criticalThreshold && criticalThreshold > 0)
+                .sort((a, b) => b.count - a.count);
+
+            if (criticalActions.length > 0) {
+                criticalText = `Les points négatifs suivants ont été observés de façon récurrente et doivent être travaillés en priorité : `;
+                criticalText += criticalActions.map(a =>
+                    `<strong>${a.label}</strong> (${a.count} occurrence${a.count > 1 ? 's' : ''})`
+                ).join(', ') + `.`;
+                document.getElementById('criticalBox').style.display = 'block';
+            }
+
+            // --- POINTS À TRAVAILLER : observables négatifs (hors critiques) ---
+            let weaknessesText = '';
+            if (negativeActions.length > 0) {
+                const nonCritical = negativeActions
+                    .filter(a => !criticalActions.includes(a))
+                    .sort((a, b) => b.count - a.count);
+
+                const absentNeg = negativeActions.filter(a => a.count === 0);
+                const presentNeg = nonCritical.filter(a => a.count > 0);
+
+                if (absentNeg.length > 0) {
+                    weaknessesText += `Les points négatifs suivants n'ont pas été observés cette fois : `;
+                    weaknessesText += absentNeg.map(a => `<strong>${a.label}</strong>`).join(', ') + `. `;
+					weaknessesText += ` ; c'est une bonne chose ! `;
+                }
+
+                if (presentNeg.length > 0) {
+                    weaknessesText += `Des progrès restent à accomplir sur les points suivants : `;
+                    weaknessesText += presentNeg.map(a =>
+                        `<strong>${a.label}</strong> (${a.count} fois)`
+                    ).join(', ') + `. `;
+                }
+
+                if (!weaknessesText) {
+                    weaknessesText = `Aucun point négatif supplémentaire à signaler.`;
+                } else {
+                    weaknessesText += `Un travail ciblé sur ces points précis améliorera la performance globale.`;
+                }
+            } else {
+                weaknessesText = `Aucun observable de type négatif n'a été défini pour cette session.`;
+            }
+
+            document.getElementById('strengthsText').innerHTML  = strengthsText;
+            document.getElementById('criticalText').innerHTML   = criticalText;
+            document.getElementById('weaknessesText').innerHTML = weaknessesText;
+
+            return {
+                strengths : strengthsText.replace(/<\/?[^>]+(>|$)/g, ''),
+                critical  : criticalText.replace(/<\/?[^>]+(>|$)/g, ''),
+                weaknesses: weaknessesText.replace(/<\/?[^>]+(>|$)/g, '')
+            };
+        }
+
+        const analysis = generateAnalysis();
+
+        // ── Préparation données Google Sheets (avec polarité) ─────────────────
+        function prepareSheetData() {
+            const sheetData = {
+                date        : finalData.date,
+                activite    : finalData.activite,
+                observateur : finalData.observateur,
+                joueur      : finalData.joueur,
+                duree       : finalData.duration,
+                items       : {},
+                pointsForts    : analysis.strengths,
+                pointsCritiques: analysis.critical,
+                pointsFaibles  : analysis.weaknesses
+            };
+
+            for (let i = 1; i <= 8; i++) {
+                if (i <= finalData.nbObservables) {
+                    sheetData.items[`nom${i}`]      = finalData.items[i - 1];
+                    sheetData.items[`count${i}`]    = finalData.counts[`item${i}`] || 0;
+                    // ④ Nouvelle colonne : polarité
+                    sheetData.items[`polarity${i}`] = polarity[i - 1] || 'positive';
+                } else {
+                    sheetData.items[`nom${i}`]      = '';
+                    sheetData.items[`count${i}`]    = '';
+                    sheetData.items[`polarity${i}`] = '';
+                }
+            }
+
+            return sheetData;
+        }
+
+        const sheetData = prepareSheetData();
+        localStorage.setItem('lastSheetData', JSON.stringify(sheetData));
+
+        // ── Envoi Google Sheets ───────────────────────────────────────────────
+        function sendToGoogleSheets() {
+            const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw-yd75Dj14Lzfc4Z90ibxsVGOW9v-L3Oli0xXIU1f0h1_CXtriajMO-2EHg88vr3aM/exec';
+
+            if (WEB_APP_URL === 'VOTRE_URL_WEB_APP_ICI') {
+                console.warn('⚠️ URL du Web App non configurée.');
+                console.log('📋 Données préparées:', sheetData);
+                alert('⚠️ Configuration requise : Veuillez configurer l\'URL du Web App dans statistiques.html');
+                return;
+            }
+
+            const ts = String(finalData.timestamp);
+
+            // Évite un double envoi si la page est rechargée
+            if (localStorage.getItem('sheetSentFor') === ts) return;
+
+            console.log('📤 Envoi des données à Google Sheets...');
+
+            var formData = new FormData();
+            formData.append('data', JSON.stringify(sheetData));
+
+            fetch(WEB_APP_URL, {
+                method: 'POST',
+                mode  : 'no-cors',
+                body  : formData
+            }).then(function () {
+                localStorage.setItem('sheetSentFor', ts);
+                console.log('✅ Données envoyées à Google Sheets avec succès');
+                showNotification('✓ Données enregistrées dans Google Sheets');
+            }).catch(function (error) {
+                // Hors ligne : mise en file d'attente, renvoi automatique (voir pwa.js)
+                console.error('❌ Erreur lors de l\'envoi:', error);
+                if (window.queueSheetSend) window.queueSheetSend(WEB_APP_URL, sheetData, ts);
+                showNotification('⚠ Hors ligne - envoi automatique dès le retour du réseau');
+            });
+        }
+
+        function showNotification(message) {
+            const n = document.createElement('div');
+            n.style.cssText = 'position:fixed;top:20px;right:20px;background:linear-gradient(135deg,#43e97b 0%,#38f9d7 100%);color:white;padding:15px 25px;border-radius:12px;box-shadow:0 8px 25px rgba(67,233,123,0.4);z-index:10000;font-weight:600;font-size:1em;';
+            n.textContent = message;
+            document.body.appendChild(n);
+            setTimeout(() => {
+                n.style.cssText += 'opacity:0;transform:translateY(-20px);transition:all 0.3s;';
+                setTimeout(() => { if (n.parentNode) document.body.removeChild(n); }, 300);
+            }, 4000);
+        }
+
+        sendToGoogleSheets();
+
+        document.getElementById('newAnalysisBtn').addEventListener('click', function () {
+            if (confirm('Commencer une nouvelle analyse ? Toutes les données actuelles seront réinitialisées.')) {
+                // On garde la file d'envoi en attente (pendingSheets)
+                ['observationConfig', 'startTime', 'observationCounts', 'observationFinalData', 'lastSheetData']
+                    .forEach(k => localStorage.removeItem(k));
+                window.location.href = 'index.html';
+            }
+        });
+
+        console.log('Données préparées pour Google Sheets:', sheetData);
+    </script>
+    <script src="pwa.js"></script>
+</body>
+</html>
