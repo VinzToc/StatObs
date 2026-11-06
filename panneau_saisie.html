@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StatObs – Saisie</title>
+<meta name="theme-color" content="#FFC800">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="StatObs">
+<link rel="stylesheet" href="statobs.css">
+</head>
+<body class="panel-page">
+<div class="container">
+  <div class="brand" style="margin-bottom:0"><img src="icons/icon-192.png" alt="" style="width:44px;height:44px;border-radius:11px"><h1 style="font-size:1.4rem">StatObs</h1></div>
+  <p class="muted" style="text-align:center;margin-top:6px">Touche courte : +1 · Appui long : −1</p>
+
+  <div class="infobar">
+    <div><div class="l">Chronomètre</div><div class="v" id="chrono">00:00</div></div>
+    <div><div class="l">Sportif observé</div><div class="v" id="playerName">-</div></div>
+    <div><div class="l" id="obsLabel">Observateur</div><div class="v" id="obsNames" style="font-size:.95rem">-</div></div>
+  </div>
+
+  <div class="tabs" id="tabs" hidden></div>
+
+  <div class="legend"><span><i class="p"></i>Observable positif</span><span><i class="n"></i>Observable négatif</span></div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="foot">
+    <button class="btn btn-ghost" id="resetBtn">Réinitialiser</button>
+    <button class="btn btn-primary" id="finishBtn">Session terminée ?</button>
+  </div>
+</div>
+
+<script src="eps-core.js"></script>
+<script src="statobs.js"></script>
+<script>
+(function () {
+  'use strict';
+  const S = StatObs, K = S.K;
+  const cfg = S.read(K.config);
+  if (!cfg) { location.replace('index.html'); return; }
+  if (S.read(K.final)) { location.replace('statistiques.html'); return; }
+
+  const counts = S.read(K.counts) || {};
+  cfg.joueurs.forEach(p => { counts[p.id] = counts[p.id] || {}; });
+  let cur = Math.min(Math.max(parseInt(localStorage.getItem(K.cur)) || 0, 0), cfg.joueurs.length - 1);
+  const $ = id => document.getElementById(id);
+
+  $('obsNames').textContent = cfg.observateurs.map(o => o.nom).join(', ');
+  $('obsLabel').textContent = cfg.observateurs.length > 1 ? 'Observateurs' : 'Observateur';
+
+  /* ── Chronomètre (depuis le début de la séance) ── */
+  const tick = () => { $('chrono').textContent = S.fmtDuration(Date.now() - cfg.id); };
+  const timer = setInterval(tick, 1000); tick();
+
+  /* ── Boutons : positifs d'abord, puis négatifs ── */
+  const order = cfg.items.map((_, i) => i)
+    .sort((a, b) => (cfg.polarity[a] === 'negative') - (cfg.polarity[b] === 'negative'));
+  const grid = $('grid'), cntEls = {};
+  let pv = 0, nv = 0;
+  order.forEach(i => {
+    const neg = cfg.polarity[i] === 'negative';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'abtn ' + (neg ? 'neg' : 'pos');
+    b.dataset.v = (neg ? nv++ : pv++) % 4;
+    b.innerHTML = `<span class="badge">${neg ? '–' : '+'}</span><span class="cnt">0</span><span class="lab"></span>`;
+    b.querySelector('.lab').textContent = cfg.items[i];
+    cntEls[i] = b.querySelector('.cnt');
+    bind(b, i);
+    grid.appendChild(b);
+  });
+
+  const total = pid => Object.values(counts[pid] || {}).reduce((a, n) => a + n, 0);
+
+  function show() {
+    const pid = cfg.joueurs[cur].id;
+    $('playerName').textContent = cfg.joueurs[cur].nom;
+    cfg.items.forEach((_, i) => { cntEls[i].textContent = counts[pid]['item' + (i + 1)] || 0; });
+    renderTabs();
+  }
+
+  function renderTabs() {
+    const t = $('tabs');
+    if (cfg.joueurs.length < 2) return;
+    t.hidden = false;
+    t.innerHTML = cfg.joueurs.map((p, i) =>
+      `<button type="button" class="tab${i === cur ? ' on' : ''}" data-i="${i}">${S.esc(p.nom)}<b>${total(p.id)}</b></button>`).join('');
+  }
+  $('tabs').addEventListener('click', e => {
+    const b = e.target.closest('.tab'); if (!b) return;
+    cur = +b.dataset.i; localStorage.setItem(K.cur, cur); show();
+  });
+
+  function change(i, d) {
+    const pid = cfg.joueurs[cur].id, key = 'item' + (i + 1);
+    const v = Math.max(0, (counts[pid][key] || 0) + d);
+    if (v === counts[pid][key]) return;
+    counts[pid][key] = v;
+    S.write(K.counts, counts);
+    cntEls[i].textContent = v;
+    const btn = cntEls[i].closest('.abtn');
+    btn.classList.add('bump'); setTimeout(() => btn.classList.remove('bump'), 150);
+    if (navigator.vibrate) navigator.vibrate(d > 0 ? 15 : [20, 40, 20]);
+    if (cfg.joueurs.length > 1) renderTabs();
+  }
+
+  /* Appui court = +1, appui long = −1 (souris, tactile et clavier) */
+  function bind(btn, i) {
+    let timer = null, long = false;
+    const stop = () => clearTimeout(timer);
+    btn.addEventListener('pointerdown', () => {
+      long = false;
+      timer = setTimeout(() => { long = true; change(i, -1); }, 500);
+    });
+    btn.addEventListener('pointerup', () => { stop(); if (!long) change(i, +1); });
+    btn.addEventListener('pointerleave', stop);
+    btn.addEventListener('pointercancel', stop);
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+    btn.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); change(i, +1); }
+    });
+  }
+
+  $('resetBtn').addEventListener('click', () => {
+    const p = cfg.joueurs[cur];
+    if (confirm(`Remettre à zéro les compteurs de ${p.nom} ?`)) {
+      counts[p.id] = {}; S.write(K.counts, counts); show();
+    }
+  });
+
+  $('finishBtn').addEventListener('click', () => {
+    if (!confirm('Terminer la session et afficher les statistiques ?')) return;
+    clearInterval(timer);
+    const now = Date.now();
+    const final = Object.assign({}, cfg, { duration: S.fmtDuration(now - cfg.id), durationMs: now - cfg.id, counts, timestamp: now });
+    S.write(K.final, final);
+    window.removeEventListener('beforeunload', warnLeave);
+    location.href = 'statistiques.html';
+  });
+
+  /* Évite une fermeture accidentelle pendant l'observation */
+  function warnLeave(e) { e.preventDefault(); e.returnValue = ''; }
+  window.addEventListener('beforeunload', warnLeave);
+
+  /* Écran allumé pendant l'observation (si le navigateur le permet) */
+  async function keepAwake() { try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch (e) {} }
+  keepAwake();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+
+  show();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StatObs – Statistiques</title>
+<meta name="theme-color" content="#FFC800">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="StatObs">
+<link rel="stylesheet" href="statobs.css">
+</head>
+<body>
+<div class="container wide">
+  <div class="brand" style="margin-bottom:0"><img src="icons/icon-192.png" alt="" style="width:44px;height:44px;border-radius:11px"><h1 style="font-size:1.4rem">StatObs</h1></div>
+  <h2 class="page-title">Statistiques et bilan du sportif</h2>
+
+  <div class="tabs" id="tabs" hidden></div>
+
+  <p class="who"><b id="playerName">-</b> <span class="muted">observé par</span> <b id="observerName">-</b></p>
+  <p class="muted" style="text-align:center" id="meta"></p>
+
+  <div class="legend"><span><i class="p"></i>Observable positif</span><span><i class="n"></i>Observable négatif</span></div>
+  <div class="radar-wrap" id="chart"></div>
+
+  <h2 class="section-title">Synthèse des observables</h2>
+  <div class="table-wrap">
+    <table class="st">
+      <thead><tr><th>Observable</th><th class="c">Type</th><th class="c">Nb</th><th class="c">%</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <h2 class="section-title">Bilan et objectifs</h2>
+  <div id="bilan"></div>
+
+  <div class="msg ok" id="saveMsg">Enregistrement de la séance…</div>
+
+  <div class="btn-row">
+    <button class="btn btn-dark" id="exportBtn">Exporter les résultats (.xlsx)</button>
+    <button class="btn btn-ghost" id="printBtn">Imprimer / PDF</button>
+    <button class="btn btn-primary" id="newBtn">Nouvelle analyse ?</button>
+  </div>
+</div>
+
+<script src="eps-core.js"></script>
+<script src="eps-xlsx.js"></script>
+<script src="statobs-bilan.js"></script>
+<script src="statobs.js"></script>
+<script>
+(function () {
+  'use strict';
+  const S = StatObs, K = S.K, E = S.esc, B = StatObsBilan;
+  const $ = id => document.getElementById(id);
+  const f = S.read(K.final);
+  if (!f) { location.replace('index.html'); return; }
+
+  let cur = Math.min(Math.max(parseInt(localStorage.getItem(K.cur)) || 0, 0), f.joueurs.length - 1);
+  $('observerName').textContent = f.observateurs.map(o => o.nom).join(', ');
+  $('meta').textContent = `${f.activite} · ${new Date(f.id).toLocaleDateString('fr-FR')} · durée ${f.duration}`;
+
+  function render() {
+    const p = f.joueurs[cur], acts = B.actsOf(f, p.id);
+    $('playerName').textContent = p.nom;
+    const total = acts.reduce((s, a) => s + a.count, 0);
+    $('chart').innerHTML = `<h3>Analyse des ${total} action${total > 1 ? 's' : ''} observée${total > 1 ? 's' : ''}</h3>` + B.radar(acts);
+
+    const sorted = [...acts].sort((a, d) => a.polarity !== d.polarity ? (a.polarity === 'positive' ? -1 : 1) : d.count - a.count);
+    $('rows').innerHTML = sorted.map(a => {
+      const neg = a.polarity === 'negative';
+      return `<tr><td>${E(a.label)}</td><td class="c"><span class="tag ${neg ? 'n' : 'p'}">${neg ? '– Négatif' : '+ Positif'}</span></td>` +
+        `<td class="c"><b>${a.count}</b></td><td class="c">${total ? (a.count / total * 100).toFixed(1) : '0.0'} %</td></tr>`;
+    }).join('');
+
+    $('bilan').innerHTML = B.toHTML(B.coach({ nom: p.nom, activite: f.activite, acts, ms: B.msOf(f) }));
+
+    if (f.joueurs.length > 1) {
+      $('tabs').hidden = false;
+      $('tabs').innerHTML = f.joueurs.map((q, i) => `<button type="button" class="tab${i === cur ? ' on' : ''}" data-i="${i}">${E(q.nom)}</button>`).join('');
+    }
+  }
+  $('tabs').addEventListener('click', e => {
+    const t = e.target.closest('.tab'); if (!t) return;
+    cur = +t.dataset.i; localStorage.setItem(K.cur, cur); render();
+  });
+  render();
+
+  /* ── Enregistrement : historique local + résumé dans la base élèves Mes Apps EPS ── */
+  const saved = (async () => {
+    const box = $('saveMsg');
+    try {
+      const r = await S.saveSession(f);
+      if (r.ok && !r.fail) { box.className = 'msg ok'; box.textContent = `✓ Séance enregistrée pour ${r.ok} élève${r.ok > 1 ? 's' : ''} (« ${r.field} »).`; }
+      else if (r.ok) { box.className = 'msg warn'; box.textContent = `Séance enregistrée pour ${r.ok} élève(s) ; ${r.fail} introuvable(s) dans la base (liste réimportée ?). Elle reste dans l'export.`; }
+      else { box.className = 'msg warn'; box.textContent = 'Séance conservée pour l\'export, mais les élèves sont introuvables dans la base Mes Apps EPS (liste réimportée ?).'; }
+    } catch (e) {
+      box.className = 'msg err'; box.textContent = 'Enregistrement impossible : ' + (e && e.message || e);
+    }
+  })();
+
+  $('exportBtn').addEventListener('click', async () => {
+    await saved;
+    S.exportXlsx().catch(e => S.toast('Export impossible : ' + (e && e.message || e)));
+  });
+  $('printBtn').addEventListener('click', () => window.print());
+  $('newBtn').addEventListener('click', () => {
+    if (confirm('Commencer une nouvelle analyse ? Les résultats de cette séance restent enregistrés.')) {
+      S.clearSession(); location.href = 'index.html';
+    }
+  });
+})();
+</script>
+</body>
+</html>

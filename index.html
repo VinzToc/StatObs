@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StatObs – Accueil</title>
+<meta name="theme-color" content="#FFC800">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="StatObs">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="statobs.css">
+</head>
+<body>
+<div class="container">
+  <div class="brand">
+    <img src="icons/icon-192.png" alt="Logo StatObs">
+    <h1>StatObs<small>Observation du sportif en EPS</small></h1>
+  </div>
+
+  <div class="banner" id="resume" hidden>
+    <span id="resumeTxt"></span>
+    <button type="button" class="btn btn-sm" id="resumeBtn">Ouvrir</button>
+  </div>
+
+  <div class="panel" id="dbPanel">
+    <h2>👥 Base élèves Mes Apps EPS</h2>
+    <p class="muted" id="dbInfo">Chargement…</p>
+    <input type="file" id="csvFile" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" hidden>
+    <div class="btn-row"><button type="button" class="btn btn-ghost btn-sm" id="importBtn" style="flex:0 0 auto">Charger / mettre à jour le fichier élèves (.xlsx ou .csv)</button></div>
+    <p class="muted" style="margin-top:8px">StatObs lit automatiquement la base « Mes Apps EPS » de cet appareil à l'ouverture. Sinon, chargez le fichier <b>Mes_Apps_EPS_….xlsx</b> (ou l'export Pronote .csv). Tout reste sur l'appareil : aucune donnée n'est envoyée sur Internet.</p>
+    <div id="importMsg"></div>
+  </div>
+
+  <form id="configForm" novalidate>
+    <h2 class="section-title">Observateurs</h2>
+    <div id="pickObs"></div>
+
+    <h2 class="section-title">Pratiquants observés</h2>
+    <div id="pickPlay"></div>
+
+    <h2 class="section-title">Séance</h2>
+    <label class="lbl" for="activite">Activité pratiquée :</label>
+    <input type="text" id="activite" maxlength="60" autocomplete="off" list="actList" placeholder="ex. Basket-ball, Badminton, Demi-fond…">
+    <datalist id="actList"></datalist>
+    <p class="muted" id="actInfo" style="margin-top:6px"></p>
+    <div class="suggest" id="suggestBox" hidden><button type="button" class="btn btn-ghost btn-sm" id="suggestBtn">✨ Proposer des observables types pour cette activité</button></div>
+
+    <label class="lbl" for="nbObservables">Nombre d'observables :</label>
+    <select id="nbObservables">
+      <option value="">-- Sélectionnez --</option>
+      <option>1</option><option>2</option><option>3</option><option>4</option>
+      <option>5</option><option>6</option><option>7</option><option>8</option>
+    </select>
+
+    <div class="legend" id="legend" hidden>
+      <span><i class="p"></i>Point positif</span><span><i class="n"></i>Point négatif</span>
+    </div>
+    <div id="obsList" style="margin-top:12px"></div>
+
+    <p class="msg err" id="formErr" hidden></p>
+    <div class="btn-row"><button type="submit" class="btn btn-primary">Début de l'observation</button></div>
+  </form>
+
+  <div class="panel">
+    <h2>📄 Résultats</h2>
+    <p class="muted" id="sessInfo">…</p>
+    <div class="btn-row"><button type="button" class="btn btn-dark" id="exportBtn" disabled>Exporter les résultats (.xlsx)</button></div>
+  </div>
+
+  <div class="btn-row"><button type="button" class="btn btn-ghost" id="installBtn" hidden>📲 Installer l'application</button></div>
+  <div class="hint" id="iosHint" hidden>
+    <b>Installer sur iPhone / iPad :</b> dans Safari, touchez le bouton Partager puis « Sur l'écran d'accueil ».
+  </div>
+</div>
+
+<script src="eps-core.js"></script>
+<script src="eps-xlsx.js"></script>
+<script src="statobs-bilan.js"></script>
+<script src="statobs.js"></script>
+<script>
+(function () {
+  'use strict';
+  const S = StatObs, K = S.K, norm = EPS.norm;
+  const $ = id => document.getElementById(id);
+  let students = [], byId = new Map();
+  const sel = { obs: new Set(), play: new Set() };
+  const pickers = {};
+
+  /* ── Sélecteur multiple d'élèves (classe + recherche + cases à cocher) ── */
+  function makePicker(rootId, key, other, emptyTxt) {
+    const root = $(rootId);
+    root.innerHTML =
+      '<div class="picker-head"><select class="cls" aria-label="Classe"></select>' +
+      '<input type="search" class="q" placeholder="Rechercher un nom…" aria-label="Rechercher"></div>' +
+      '<div class="chips"></div><div class="plist"></div>' +
+      '<div class="picker-tools"><button type="button" class="link all">Tout cocher (liste affichée)</button>' +
+      '<button type="button" class="link none">Tout décocher</button></div>';
+    const cls = root.querySelector('.cls'), q = root.querySelector('.q'),
+          list = root.querySelector('.plist'), chips = root.querySelector('.chips');
+
+    function fillClasses() {
+      const v = cls.value;
+      const all = [...new Set(students.map(e => e.classe).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
+      cls.innerHTML = '<option value="">Toutes les classes</option>' +
+        all.map(c => `<option>${S.esc(c)}</option>`).join('');
+      cls.value = v; if (cls.value !== v) cls.value = '';
+    }
+    function visible() {
+      const n = norm(q.value);
+      return students.filter(e => (!cls.value || e.classe === cls.value) && (!n || norm(S.name(e)).includes(n)));
+    }
+    function renderChips() {
+      chips.innerHTML = [...sel[key]].map(id => byId.get(id)).filter(Boolean).map(e =>
+        `<span class="chip">${S.esc(S.name(e))}<button type="button" data-id="${S.esc(e.id)}" aria-label="Retirer">×</button></span>`).join('');
+    }
+    function renderList() {
+      const vis = visible();
+      list.innerHTML = vis.length ? vis.map(e => {
+        const dis = sel[other].has(e.id);
+        return `<label class="prow${dis ? ' dis' : ''}"><input type="checkbox" value="${S.esc(e.id)}"` +
+          `${sel[key].has(e.id) ? ' checked' : ''}${dis ? ' disabled' : ''}>` +
+          `<span>${S.esc(S.name(e))}</span><small>${S.esc(e.classe)}</small></label>`;
+      }).join('') : `<div class="empty">${students.length ? 'Aucun élève ne correspond.' : emptyTxt}</div>`;
+    }
+    const render = () => { fillClasses(); renderList(); renderChips(); };
+
+    cls.addEventListener('change', renderList);
+    q.addEventListener('input', renderList);
+    list.addEventListener('change', e => {
+      const id = e.target.value;
+      e.target.checked ? sel[key].add(id) : sel[key].delete(id);
+      renderChips(); pickers[other].renderList();
+    });
+    chips.addEventListener('click', e => {
+      const id = e.target.dataset && e.target.dataset.id;
+      if (!id) return;
+      sel[key].delete(id); renderList(); renderChips(); pickers[other].renderList();
+    });
+    root.querySelector('.all').addEventListener('click', () => {
+      visible().forEach(e => { if (!sel[other].has(e.id)) sel[key].add(e.id); });
+      renderList(); renderChips(); pickers[other].renderList();
+    });
+    root.querySelector('.none').addEventListener('click', () => {
+      sel[key].clear(); renderList(); renderChips(); pickers[other].renderList();
+    });
+    pickers[key] = { render, renderList };
+  }
+
+  const EMPTY = 'Chargez d\'abord le fichier élèves Mes Apps EPS.';
+  makePicker('pickObs', 'obs', 'play', EMPTY);
+  makePicker('pickPlay', 'play', 'obs', EMPTY);
+
+  /* ── Base élèves ── */
+  async function loadStudents() {
+    try {
+      students = (await EPS.all()).sort(S.byName);
+      byId = new Map(students.map(e => [e.id, e]));
+      ['obs', 'play'].forEach(k => [...sel[k]].forEach(id => { if (!byId.has(id)) sel[k].delete(id); }));
+      const m = await EPS.meta();
+      $('dbInfo').textContent = students.length
+        ? `${students.length} élèves` + (m ? ` · liste importée le ${new Date(m.v).toLocaleDateString('fr-FR')} (${m.n})` : '')
+        : 'Aucune liste d\'élèves sur cet appareil : chargez le fichier Mes Apps EPS (.xlsx) ou l\'export Pronote (.csv).';
+      $('dbPanel').classList.toggle('alert', !students.length);
+      pickers.obs.render(); pickers.play.render();
+      const n = await S.countSessions();
+      $('sessInfo').textContent = n
+        ? `${n} séance${n > 1 ? 's' : ''} enregistrée${n > 1 ? 's' : ''} : l'export produit un classeur au format Mes Apps EPS (feuilles « Élèves » et « statobs », une ligne par élève et par séance).`
+        : 'Aucune séance enregistrée pour le moment.';
+      $('exportBtn').disabled = !n;
+    } catch (err) {
+      $('dbInfo').textContent = 'Base locale inaccessible (navigation privée ?) : ' + (err && err.message || err);
+    }
+  }
+
+  $('importBtn').addEventListener('click', () => $('csvFile').click());
+  $('csvFile').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const box = $('importMsg');
+    try {
+      const r = await S.importFile(f);
+      box.innerHTML = `<p class="msg ok">${r.add} élève(s) ajouté(s), ${r.upd} mis à jour.</p>` +
+        (r.cols.length ? `<p class="msg warn">Colonnes non trouvées : ${S.esc(r.cols.join(', '))}.</p>` : '');
+      await loadStudents();
+    } catch (err) {
+      box.innerHTML = `<p class="msg err">${S.esc(err && err.message || err)}</p>`;
+    }
+    e.target.value = '';
+  });
+
+  $('exportBtn').addEventListener('click', () => S.exportXlsx().catch(err => S.toast('Export impossible : ' + (err && err.message || err))));
+
+  /* ── Observables + polarité ── */
+  const items = [], pols = [];
+  function renderObs() {
+    $('obsList').querySelectorAll('.obs-row').forEach((r, i) => {
+      items[i] = r.querySelector('input[type=text]').value;
+      pols[i] = r.querySelector('input[type=checkbox]').checked;
+    });
+    const n = +$('nbObservables').value || 0;
+    $('obsList').innerHTML = Array.from({ length: n }, (_, i) =>
+      `<div class="obs-row"><div class="grow"><span class="item-label">Observable ${i + 1} :</span>` +
+      `<input type="text" id="item${i + 1}" maxlength="40" autocomplete="off" value="${S.esc(items[i] || '')}"></div>` +
+      `<div class="pol"><span class="cap">Polarité</span><input type="checkbox" id="pol${i + 1}"${pols[i] ? ' checked' : ''}>` +
+      `<label class="switch" for="pol${i + 1}"><span class="knob"></span></label></div></div>`).join('');
+    $('legend').hidden = !n;
+  }
+  $('nbObservables').addEventListener('change', renderObs);
+
+  /* ── Activité : référentiel du bilan coach + observables types ── */
+  const B = StatObsBilan;
+  $('actList').innerHTML = B.ACTIVITIES.map(a => `<option value="${S.esc(a.nom)}">`).join('');
+  function onAct() {
+    const a = B.detect($('activite').value);
+    $('actInfo').textContent = a ? `Référentiel reconnu : ${a.nom} — ${B.CA[a.ca]}. Le bilan sera adapté à l'activité.`
+      : ($('activite').value.trim() ? 'Activité non reconnue : le bilan donnera des conseils généraux.' : '');
+    $('suggestBox').hidden = !a;
+  }
+  $('activite').addEventListener('input', onAct); onAct();
+  $('suggestBtn').addEventListener('click', () => {
+    const a = B.detect($('activite').value); if (!a) return;
+    const filled = [...$('obsList').querySelectorAll('input[type=text]')].some(i => i.value.trim());
+    if (filled && !confirm('Remplacer les observables déjà saisis ?')) return;
+    $('nbObservables').value = String(a.suggest.length);
+    $('obsList').innerHTML = '';
+    a.suggest.forEach((o, i) => { items[i] = o[0]; pols[i] = o[1] === '-'; });
+    renderObs();
+  });
+
+  /* ── Démarrage de la séance ── */
+  $('configForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const err = m => { const b = $('formErr'); b.textContent = m; b.hidden = false; b.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+    $('formErr').hidden = true;
+    if (!sel.obs.size)  return err('Sélectionnez au moins un observateur.');
+    if (!sel.play.size) return err('Sélectionnez au moins un pratiquant à observer.');
+    const act = $('activite').value.trim();
+    if (!act) return err('Indiquez l\'activité pratiquée.');
+    const n = +$('nbObservables').value;
+    if (!n) return err('Choisissez le nombre d\'observables.');
+    const its = [], pl = [];
+    for (let i = 1; i <= n; i++) {
+      const v = $('item' + i).value.trim();
+      if (!v) return err(`Renseignez l'observable ${i}.`);
+      its.push(v); pl.push($('pol' + i).checked ? 'negative' : 'positive');
+    }
+    const pick = set => [...set].map(id => byId.get(id)).filter(Boolean).sort(S.byName)
+      .map(s => ({ id: s.id, nom: S.name(s), classe: s.classe }));
+    const cfg = { id: Date.now(), activite: act, nbObservables: n, items: its, polarity: pl,
+                  observateurs: pick(sel.obs), joueurs: pick(sel.play) };
+    S.clearSession();
+    S.write(K.config, cfg);
+    const counts = {}; cfg.joueurs.forEach(p => { counts[p.id] = {}; });
+    S.write(K.counts, counts); S.write(K.cur, 0);
+    location.href = 'panneau_saisie.html';
+  });
+
+  /* ── Séance en cours / terminée ── */
+  (function banner() {
+    const cfg = S.read(K.config), fin = S.read(K.final);
+    if (!cfg) return;
+    $('resume').hidden = false;
+    $('resumeTxt').textContent = fin ? `Résultats disponibles : séance « ${cfg.activite} ».` : `Séance en cours : « ${cfg.activite} ».`;
+    $('resumeBtn').textContent = fin ? 'Voir les statistiques' : 'Reprendre';
+    $('resumeBtn').onclick = () => { location.href = fin ? 'statistiques.html' : 'panneau_saisie.html'; };
+  })();
+
+  loadStudents();
+})();
+</script>
+</body>
+</html>
