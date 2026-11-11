@@ -1,6 +1,6 @@
 /* Service worker StatObs – tout est mis en cache : l'app fonctionne sans réseau.
    Pour publier une mise à jour : changer VERSION ci-dessous. */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = 'statobs-' + VERSION;
 
 const CORE = [

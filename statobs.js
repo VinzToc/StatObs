@@ -1,12 +1,12 @@
-/* StatObs (Mes Apps EPS, version enseignant) – fonctions communes : séance en cours,
-   lecture de la base élèves Mes Apps EPS (eps-core.js, .xlsx ou .csv), enregistrement
-   des séances, export .xlsx au format type « Mes Apps EPS », installation PWA. 100 % local. */
+/* StatObs (Mes Apps EPS, version prof) – fonctions communes : séance en cours,
+   enregistrement dans la base Mes Apps EPS (eps-core.js v2.2, mode « lignes »),
+   import des sauvegardes StatObs (fichiers élèves ou export général), export .xlsx,
+   installation PWA. 100 % local. */
 (function () {
   'use strict';
 
-  const APP = 'statobs';                      // identifiant de l'app dans eps-core (ext.statobs) et nom de la feuille
+  const APP = 'statobs';                      // identifiant de l'app (apps.json, ext.statobs, feuille « statobs »)
   const K = { config: 'statobsConfig', counts: 'statobsCounts', cur: 'statobsCurrent', final: 'statobsFinal' };
-  const HIST = 'statobsHistory';              // séances terminées (détail complet, pour l'export)
   const S = window.StatObs = { APP, K };
 
   S.read  = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
@@ -26,77 +26,85 @@
     setTimeout(() => n.remove(), 3500);
   };
 
-  /* ── Import de la base élèves : fichier Mes Apps EPS (.xlsx) ou export Pronote (.csv) ── */
-  S.importFile = async file => {
-    if (/\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type)) {
-      const csv = EPSXLSX.elevesToCSV(await EPSXLSX.read(await file.arrayBuffer()));
-      return EPS.importCSV(new File([csv], file.name, { type: 'text/csv' }));
-    }
-    return EPS.importCSV(file);
-  };
-
-  /* ── Colonne de la séance dans ext.statobs : « 2026-10-31 14h05 Basket » ── */
-  S.field = cfg => {
-    const d = new Date(cfg.id), p = n => String(n).padStart(2, '0');
-    const act = String(cfg.activite || '').replace(/[_;"\r\n]+/g, ' ').trim();
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}h${p(d.getMinutes())} ${act}`.trim();
-  };
   const who = list => list.map(o => o.classe ? `${o.nom} (${o.classe})` : o.nom).join(', ');
 
-  S.playerValue = (f, pid) => {
-    const B = StatObsBilan, acts = B.actsOf(f, pid), r = B.coach({ nom: '', activite: f.activite, acts, ms: B.msOf(f) });
-    const obs = acts.map(a => `${a.label} (${a.polarity === 'negative' ? '-' : '+'}) : ${a.count}`).join(' ; ');
-    return `${obs} | durée ${f.duration} | observé par ${who(f.observateurs)} | ${r.niveau}${r.prio ? ' · priorité : ' + r.prio.label : ''}`;
-  };
-  S.observerValue = f => 'Observateur de ' + who(f.joueurs);
+  /* Une ligne de la feuille « statobs » sous forme d'objet {colonne: valeur} (cases vides omises,
+     pour qu'un export puis un réimport ne crée pas de doublon) */
+  function ligne(f, pid, role, w) {
+    const B = StatObsBilan, cells = B.sheetCells(f, pid, role, w), head = B.header(f.items.length), o = {};
+    cells.forEach((v, i) => {
+      if (v == null) return;
+      if (typeof v === 'string') { v = v.trim(); if (!v) return; }
+      o[head[i]] = v;
+    });
+    return o;
+  }
 
-  S.history = () => S.read(HIST) || [];
-
-  /* Enregistre la séance : détail dans l'historique + résumé dans la base élèves partagée */
+  /* Enregistre la séance dans la base Mes Apps EPS : une ligne par pratiquant et par observateur */
   S.saveSession = async f => {
-    const h = S.history().filter(x => x.id !== f.id); h.push(f); h.sort((a, b) => a.id - b.id); S.write(HIST, h);
-    const field = S.field(f);
     let ok = 0, fail = 0;
-    const jobs = f.joueurs.map(p => [p.id, S.playerValue(f, p.id)]).concat(f.observateurs.map(o => [o.id, S.observerValue(f)]));
-    for (const [id, value] of jobs) {
-      try { await EPS.setExt(APP, id, { [field]: value }); ok++; } catch (e) { fail++; }
+    const jobs = f.joueurs.map(p => [p.id, ligne(f, p.id, 'Pratiquant', { observateurs: who(f.observateurs), observes: p.nom })])
+      .concat(f.observateurs.map(o => [o.id, ligne(f, o.id, 'Observateur', { observateurs: o.nom, observes: who(f.joueurs) })]));
+    for (const [id, l] of jobs) {
+      try { await EPS.addLigne(APP, id, l); ok++; } catch (e) { fail++; }
     }
-    return { field, ok, fail };
+    return { ok, fail };
   };
+
+  const lignes = e => { const d = (e.ext || {})[APP]; return d && Array.isArray(d.lignes) ? d.lignes : []; };
 
   S.countSessions = async () => {
-    const set = new Set(S.history().map(S.field));
-    try { (await EPS.all()).forEach(e => Object.keys((e.ext && e.ext[APP]) || {}).forEach(k => set.add(k))); } catch (e) {}
+    const set = new Set();
+    (await EPS.all()).forEach(e => lignes(e).forEach(l => set.add([l.Date, l.Heure, l['Activité']].join('|'))));
     return set.size;
   };
 
-  /* ── Export .xlsx au format type Mes Apps EPS : Élèves + statobs (lignes) + _meta ── */
+  /* Import d'une sauvegarde StatObs : fichier d'un élève (StatObs Élèves) ou export général StatObs.
+     Seule la feuille « statobs » est lue : la liste des élèves de Mes Apps EPS n'est jamais modifiée. */
+  S.importSave = async file => {
+    const sheets = await EPSXLSX.read(await file.arrayBuffer());
+    const n = s => StatObsBilan.norm(s);
+    const meta = sheets.find(s => s.name === '_meta');
+    let name = APP;
+    if (meta) { const r = meta.rows.find(r => n(r[1]) === APP); if (r) name = String(r[0]); }
+    const sh = sheets.find(s => s.name === name) || sheets.find(s => n(s.name) === APP);
+    if (!sh || sh.rows.length < 2) throw new Error(`« ${file.name} » n'est pas une sauvegarde StatObs (feuille « statobs » absente ou vide).`);
+    const rows = sh.rows.filter(r => r && r.some(v => v !== ''));
+    const before = (await EPS.all()).reduce((s, e) => s + lignes(e).length, 0);
+    const buf = await EPSXLSX.build([{ name: APP, rows }, { name: '_meta', hidden: true, rows: [['Feuille', 'Application', 'Mode'], [APP, APP, 'lignes']] }]).arrayBuffer();
+    const r = await EPS.importXLSX(buf, file.name);
+    const after = (await EPS.all()).reduce((s, e) => s + lignes(e).length, 0);
+    return { lues: rows.length - 1, ajoutees: after - before, ignorees: r.ign || 0 };
+  };
+
+  /* Export .xlsx au format Mes Apps EPS : Élèves + statobs (lignes) + _meta */
   S.exportXlsx = async () => {
-    const B = StatObsBilan, base = await EPS.all(), byId = new Map(base.map(e => [e.id, e]));
-    const ident = (p) => { const e = byId.get(p.id); return e ? [e.nom, e.prenom, e.naissance, e.classe] : [p.nom, '', '', p.classe || '']; };
-    const rows = [], hist = S.history(), done = new Set(hist.map(S.field));
-    for (const f of hist) {
-      f.joueurs.forEach(p => rows.push(ident(p).concat(B.sheetCells(f, p.id, 'Pratiquant', { observateurs: who(f.observateurs), observes: p.nom }))));
-      f.observateurs.forEach(o => rows.push(ident(o).concat(B.sheetCells(f, o.id, 'Observateur', { observateurs: o.nom, observes: who(f.joueurs) }))));
+    const bytes = await EPS.exportXLSX({ apps: [APP] });
+    await EPSXLSX.save(new Blob([bytes], { type: EPS.XLSX_MIME }), 'StatObs_export_' + StatObsBilan.dateOf({ id: Date.now() }) + '.xlsx');
+  };
+
+  /* Reprise des séances enregistrées par les versions précédentes (historique local + colonnes ext.statobs) */
+  S.migrate = async () => {
+    const old = S.read('statobsHistory');
+    if (Array.isArray(old)) { for (const f of old) { try { await S.saveSession(f); } catch (e) {} } localStorage.removeItem('statobsHistory'); }
+    const L = await EPS.all(), touched = [];
+    for (const e of L) {
+      const d = (e.ext || {})[APP]; if (!d) continue;
+      const keys = Object.keys(d).filter(k => k !== 'lignes'); if (!keys.length) continue;
+      const add = keys.map(k => {
+        const m = /^(\d{4}-\d{2}-\d{2}) (\d{2})h(\d{2}) ?(.*)$/.exec(k) || [], v = String(d[k]);
+        const o = { Date: m[1] || k, Heure: m[2] ? `${m[2]}:${m[3]}` : '', 'Activité': m[4] || '', 'Rôle': v.startsWith('Observateur') ? 'Observateur' : 'Pratiquant', 'Bilan du coach': v };
+        Object.keys(o).forEach(c => { if (o[c] === '') delete o[c]; });
+        return o;
+      });
+      const have = new Set((d.lignes || []).map(l => [l.Date, l.Heure, l['Activité'], l['Rôle']].join('|')));
+      e.ext[APP] = { lignes: (d.lignes || []).concat(add.filter(o => !have.has([o.Date, o.Heure, o['Activité'], o['Rôle']].join('|')))) };
+      touched.push(e);
     }
-    /* Séances plus anciennes, connues seulement par leur résumé dans la base élèves */
-    base.forEach(e => Object.entries((e.ext && e.ext[APP]) || {}).forEach(([k, v]) => {
-      if (done.has(k)) return;
-      const m = /^(\d{4}-\d{2}-\d{2}) (\d{2})h(\d{2}) ?(.*)$/.exec(k) || [];
-      const obs = String(v).startsWith('Observateur');
-      const r = [e.nom, e.prenom, e.naissance, e.classe, m[1] || k, m[2] ? `${m[2]}:${m[3]}` : '', m[4] || '', obs ? 'Observateur' : 'Pratiquant'];
-      r[4 + 14] = String(v); rows.push(Array.from(r, x => x == null ? '' : x));
-    }));
-    rows.sort((a, b) => (a[4] + a[5]).localeCompare(b[4] + b[5]) || String(a[3]).localeCompare(String(b[3]), 'fr', { numeric: true }) || String(a[0]).localeCompare(String(b[0]), 'fr'));
-    const nObs = Math.max(0, ...hist.map(f => f.items.length));
-    const eleves = [...base].sort((a, b) => String(a.classe).localeCompare(String(b.classe), 'fr', { numeric: true }) || S.byName(a, b))
-      .map(e => [e.nom, e.prenom, e.naissance, e.classe, e.regime]);
-    const blob = EPSXLSX.build([
-      { name: 'Élèves', rows: [['Nom', 'Prénom', 'Né(e) le', 'Classe', 'Régime'], ...eleves] },
-      { name: APP, rows: [['Nom', 'Prénom', 'Né(e) le', 'Classe', ...B.header(nObs)], ...rows] },
-      { name: '_meta', hidden: true, rows: [['Feuille', 'Application', 'Mode'], [APP, APP, 'lignes']] }
-    ]);
-    await EPSXLSX.save(blob, 'Mes_Apps_EPS_StatObs_' + B.dateOf({ id: Date.now() }) + '.xlsx');
+    if (touched.length) {
+      const db = await EPS.open();
+      await new Promise((ok, ko) => { const t = db.transaction('eleves', 'readwrite'), o = t.objectStore('eleves'); touched.forEach(e => o.put(e)); t.oncomplete = ok; t.onerror = () => ko(t.error); });
+    }
   };
 
   /* ── PWA : service worker, bouton d'installation (Android/PC), aide iOS ── */

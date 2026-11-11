@@ -173,3 +173,18 @@ table.st{width:100%;border-collapse:collapse;font-size:.88rem}
 .idcard h3{font-size:.95rem;margin-bottom:2px}
 @media (max-width:520px){ .grid2{grid-template-columns:1fr} }
 @media print{ body{background:#fff;padding:0} .container{box-shadow:none} .btn-row,.tabs,#saveMsg{display:none!important} }
+
+/* ── Sélecteurs d'élèves en liste déroulante ── */
+.dd{position:relative}
+.dd-btn{width:100%;display:flex;align-items:center;gap:8px;text-align:left;padding:11px 38px 11px 13px;border:2px solid #ece6cc;border-radius:10px;background:#fff;color:var(--ink);font:inherit;cursor:pointer;position:relative;min-height:46px}
+.dd-btn::after{content:'▾';position:absolute;right:14px;top:50%;font-size:1.1rem;line-height:1;transform:translateY(-50%);transition:transform .2s}
+.dd.open .dd-btn{border-color:var(--y2);box-shadow:0 0 0 3px rgba(255,210,31,.4)}
+.dd.open .dd-btn::after{transform:translateY(-50%) rotate(180deg)}
+.dd-panel .picker-head{grid-template-columns:minmax(150px,40%) 1fr}
+.dd-txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd-txt b{display:inline-block;min-width:22px;margin-right:6px;padding:1px 7px;border-radius:999px;background:var(--ink);color:var(--y);font-size:.8rem;text-align:center}
+.dd-txt .ph{color:var(--mut)}
+.dd-panel{position:absolute;z-index:30;top:calc(100% + 6px);left:0;right:0;background:#fff;border:2px solid var(--y2);border-radius:12px;padding:10px;box-shadow:0 14px 34px rgba(120,80,0,.28)}
+.dd-panel .plist{max-height:min(46vh,300px)}
+.dd-panel .picker-tools{gap:8px;flex-wrap:wrap}
+.dd-panel .picker-tools .ok{margin-left:auto}

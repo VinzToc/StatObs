@@ -93,9 +93,9 @@
     const box = $('saveMsg');
     try {
       const r = await S.saveSession(f);
-      if (r.ok && !r.fail) { box.className = 'msg ok'; box.textContent = `✓ Séance enregistrée pour ${r.ok} élève${r.ok > 1 ? 's' : ''} (« ${r.field} »).`; }
-      else if (r.ok) { box.className = 'msg warn'; box.textContent = `Séance enregistrée pour ${r.ok} élève(s) ; ${r.fail} introuvable(s) dans la base (liste réimportée ?). Elle reste dans l'export.`; }
-      else { box.className = 'msg warn'; box.textContent = 'Séance conservée pour l\'export, mais les élèves sont introuvables dans la base Mes Apps EPS (liste réimportée ?).'; }
+      if (r.ok && !r.fail) { box.className = 'msg ok'; box.textContent = `✓ Séance enregistrée dans Mes Apps EPS pour ${r.ok} élève${r.ok > 1 ? 's' : ''} (feuille « statobs »).`; }
+      else if (r.ok) { box.className = 'msg warn'; box.textContent = `Séance enregistrée pour ${r.ok} élève(s) ; ${r.fail} introuvable(s) dans la base Mes Apps EPS (liste réimportée entre-temps ?).`; }
+      else { box.className = 'msg err'; box.textContent = 'Enregistrement impossible : élèves introuvables dans la base Mes Apps EPS (liste réimportée entre-temps ?).'; }
     } catch (e) {
       box.className = 'msg err'; box.textContent = 'Enregistrement impossible : ' + (e && e.message || e);
     }

@@ -29,9 +29,9 @@
   <div class="panel" id="dbPanel">
     <h2>👥 Base élèves Mes Apps EPS</h2>
     <p class="muted" id="dbInfo">Chargement…</p>
-    <input type="file" id="csvFile" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" hidden>
-    <div class="btn-row"><button type="button" class="btn btn-ghost btn-sm" id="importBtn" style="flex:0 0 auto">Charger / mettre à jour le fichier élèves (.xlsx ou .csv)</button></div>
-    <p class="muted" style="margin-top:8px">StatObs lit automatiquement la base « Mes Apps EPS » de cet appareil à l'ouverture. Sinon, chargez le fichier <b>Mes_Apps_EPS_….xlsx</b> (ou l'export Pronote .csv). Tout reste sur l'appareil : aucune donnée n'est envoyée sur Internet.</p>
+    <input type="file" id="saveFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
+    <div class="btn-row"><button type="button" class="btn btn-ghost btn-sm" id="importBtn" style="flex:0 0 auto">📥 Importer une sauvegarde StatObs (.xlsx)</button></div>
+    <p class="muted" style="margin-top:8px">Fichiers acceptés : sauvegardes de l'application élève (StatObs Élèves) ou export général StatObs. Plusieurs fichiers peuvent être choisis en une fois ; les résultats sont rattachés aux élèves de la base par nom, prénom et classe.</p>
     <div id="importMsg"></div>
   </div>
 
@@ -90,17 +90,25 @@
   const sel = { obs: new Set(), play: new Set() };
   const pickers = {};
 
-  /* ── Sélecteur multiple d'élèves (classe + recherche + cases à cocher) ── */
-  function makePicker(rootId, key, other, emptyTxt) {
+  /* ── Sélecteur multiple d'élèves en liste déroulante (classe + recherche + cases à cocher) ── */
+  function makePicker(rootId, key, other, emptyTxt, noun) {
     const root = $(rootId);
     root.innerHTML =
-      '<div class="picker-head"><select class="cls" aria-label="Classe"></select>' +
+      '<div class="dd"><button type="button" class="dd-btn" aria-haspopup="true" aria-expanded="false"><span class="dd-txt"></span></button>' +
+      '<div class="dd-panel" hidden><div class="picker-head"><select class="cls" aria-label="Classe"></select>' +
       '<input type="search" class="q" placeholder="Rechercher un nom…" aria-label="Rechercher"></div>' +
-      '<div class="chips"></div><div class="plist"></div>' +
+      '<div class="plist"></div>' +
       '<div class="picker-tools"><button type="button" class="link all">Tout cocher (liste affichée)</button>' +
-      '<button type="button" class="link none">Tout décocher</button></div>';
-    const cls = root.querySelector('.cls'), q = root.querySelector('.q'),
-          list = root.querySelector('.plist'), chips = root.querySelector('.chips');
+      '<button type="button" class="link none">Tout décocher</button><button type="button" class="btn btn-primary btn-sm ok">OK</button></div></div></div>';
+    const dd = root.querySelector('.dd'), btn = root.querySelector('.dd-btn'), panel = root.querySelector('.dd-panel'),
+          cls = root.querySelector('.cls'), q = root.querySelector('.q'), list = root.querySelector('.plist'), txt = root.querySelector('.dd-txt');
+
+    const open = v => { panel.hidden = !v; btn.setAttribute('aria-expanded', v); dd.classList.toggle('open', v);
+      if (v) { Object.keys(pickers).forEach(k => k !== key && pickers[k].close()); } };
+    btn.addEventListener('click', () => open(panel.hidden));
+    root.querySelector('.ok').addEventListener('click', () => open(false));
+    document.addEventListener('click', e => { if (!panel.hidden && !dd.contains(e.target)) open(false); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !panel.hidden) { open(false); btn.focus(); } });
 
     function fillClasses() {
       const v = cls.value;
@@ -114,9 +122,12 @@
       const n = norm(q.value);
       return students.filter(e => (!cls.value || e.classe === cls.value) && (!n || norm(S.name(e)).includes(n)));
     }
-    function renderChips() {
-      chips.innerHTML = [...sel[key]].map(id => byId.get(id)).filter(Boolean).map(e =>
-        `<span class="chip">${S.esc(S.name(e))}<button type="button" data-id="${S.esc(e.id)}" aria-label="Retirer">×</button></span>`).join('');
+    function renderSummary() {
+      const L = [...sel[key]].map(id => byId.get(id)).filter(Boolean).sort(S.byName);
+      txt.innerHTML = !students.length ? `<span class="ph">${S.esc(emptyTxt)}</span>`
+        : !L.length ? `<span class="ph">Choisir ${noun}…</span>`
+        : `<b>${L.length}</b> ${S.esc(L.map(S.name).join(', '))}`;
+      btn.title = L.map(S.name).join('\n');
     }
     function renderList() {
       const vis = visible();
@@ -127,33 +138,26 @@
           `<span>${S.esc(S.name(e))}</span><small>${S.esc(e.classe)}</small></label>`;
       }).join('') : `<div class="empty">${students.length ? 'Aucun élève ne correspond.' : emptyTxt}</div>`;
     }
-    const render = () => { fillClasses(); renderList(); renderChips(); };
+    const render = () => { fillClasses(); renderList(); renderSummary(); };
+    const changed = () => { renderList(); renderSummary(); pickers[other].renderList(); };
 
     cls.addEventListener('change', renderList);
     q.addEventListener('input', renderList);
     list.addEventListener('change', e => {
       const id = e.target.value;
       e.target.checked ? sel[key].add(id) : sel[key].delete(id);
-      renderChips(); pickers[other].renderList();
-    });
-    chips.addEventListener('click', e => {
-      const id = e.target.dataset && e.target.dataset.id;
-      if (!id) return;
-      sel[key].delete(id); renderList(); renderChips(); pickers[other].renderList();
+      renderSummary(); pickers[other].renderList();
     });
     root.querySelector('.all').addEventListener('click', () => {
-      visible().forEach(e => { if (!sel[other].has(e.id)) sel[key].add(e.id); });
-      renderList(); renderChips(); pickers[other].renderList();
+      visible().forEach(e => { if (!sel[other].has(e.id)) sel[key].add(e.id); }); changed();
     });
-    root.querySelector('.none').addEventListener('click', () => {
-      sel[key].clear(); renderList(); renderChips(); pickers[other].renderList();
-    });
-    pickers[key] = { render, renderList };
+    root.querySelector('.none').addEventListener('click', () => { sel[key].clear(); changed(); });
+    pickers[key] = { render, renderList, close: () => open(false) };
   }
 
-  const EMPTY = 'Chargez d\'abord le fichier élèves Mes Apps EPS.';
-  makePicker('pickObs', 'obs', 'play', EMPTY);
-  makePicker('pickPlay', 'play', 'obs', EMPTY);
+  const EMPTY = 'Aucun élève : importez la liste dans Mes Apps EPS';
+  makePicker('pickObs', 'obs', 'play', EMPTY, 'le ou les observateurs');
+  makePicker('pickPlay', 'play', 'obs', EMPTY, 'le ou les pratiquants');
 
   /* ── Base élèves ── */
   async function loadStudents() {
@@ -161,15 +165,15 @@
       students = (await EPS.all()).sort(S.byName);
       byId = new Map(students.map(e => [e.id, e]));
       ['obs', 'play'].forEach(k => [...sel[k]].forEach(id => { if (!byId.has(id)) sel[k].delete(id); }));
-      const m = await EPS.meta();
+      const m = await EPS.meta(), nc = new Set(students.map(e => e.classe).filter(Boolean)).size;
       $('dbInfo').textContent = students.length
-        ? `${students.length} élèves` + (m ? ` · liste importée le ${new Date(m.v).toLocaleDateString('fr-FR')} (${m.n})` : '')
-        : 'Aucune liste d\'élèves sur cet appareil : chargez le fichier Mes Apps EPS (.xlsx) ou l\'export Pronote (.csv).';
+        ? `✓ ${students.length} élèves · ${nc} classe${nc > 1 ? 's' : ''}, chargés automatiquement depuis Mes Apps EPS` + (m ? ` (mise à jour du ${new Date(m.v).toLocaleDateString('fr-FR')})` : '') + '.'
+        : 'Aucune liste d\'élèves dans Mes Apps EPS sur ce navigateur. Ouvrez le portail Mes Apps EPS (même navigateur, même appareil) et importez-y la liste Pronote : elle apparaîtra ici automatiquement.';
       $('dbPanel').classList.toggle('alert', !students.length);
       pickers.obs.render(); pickers.play.render();
       const n = await S.countSessions();
       $('sessInfo').textContent = n
-        ? `${n} séance${n > 1 ? 's' : ''} enregistrée${n > 1 ? 's' : ''} : l'export produit un classeur au format Mes Apps EPS (feuilles « Élèves » et « statobs », une ligne par élève et par séance).`
+        ? `${n} séance${n > 1 ? 's' : ''} enregistrée${n > 1 ? 's' : ''} dans Mes Apps EPS (feuille « statobs », une ligne par élève et par séance).`
         : 'Aucune séance enregistrée pour le moment.';
       $('exportBtn').disabled = !n;
     } catch (err) {
@@ -177,19 +181,23 @@
     }
   }
 
-  $('importBtn').addEventListener('click', () => $('csvFile').click());
-  $('csvFile').addEventListener('change', async e => {
-    const f = e.target.files[0]; if (!f) return;
-    const box = $('importMsg');
-    try {
-      const r = await S.importFile(f);
-      box.innerHTML = `<p class="msg ok">${r.add} élève(s) ajouté(s), ${r.upd} mis à jour.</p>` +
-        (r.cols.length ? `<p class="msg warn">Colonnes non trouvées : ${S.esc(r.cols.join(', '))}.</p>` : '');
-      await loadStudents();
-    } catch (err) {
-      box.innerHTML = `<p class="msg err">${S.esc(err && err.message || err)}</p>`;
+  $('importBtn').addEventListener('click', () => $('saveFile').click());
+  $('saveFile').addEventListener('change', async e => {
+    const files = [...e.target.files]; if (!files.length) return;
+    const box = $('importMsg'); box.innerHTML = '<p class="msg">Import en cours…</p>';
+    const out = [];
+    for (const f of files) {
+      try {
+        const r = await S.importSave(f);
+        const dup = r.lues - r.ajoutees - r.ignorees;
+        out.push(`<p class="msg ${r.ignorees ? 'warn' : 'ok'}">${S.esc(f.name)} : ${r.ajoutees} ligne(s) ajoutée(s)` +
+          (dup > 0 ? `, ${dup} déjà présente(s)` : '') +
+          (r.ignorees ? `, ${r.ignorees} ignorée(s) : élève introuvable dans la base (vérifier nom, prénom, classe ou homonyme)` : '') + '.</p>');
+      } catch (err) { out.push(`<p class="msg err">${S.esc(err && err.message || err)}</p>`); }
     }
+    box.innerHTML = out.join('');
     e.target.value = '';
+    await loadStudents();
   });
 
   $('exportBtn').addEventListener('click', () => S.exportXlsx().catch(err => S.toast('Export impossible : ' + (err && err.message || err))));
@@ -269,7 +277,7 @@
     $('resumeBtn').onclick = () => { location.href = fin ? 'statistiques.html' : 'panneau_saisie.html'; };
   })();
 
-  loadStudents();
+  S.migrate().catch(e => console.warn('migration', e)).then(loadStudents);
 })();
 </script>
 </body>

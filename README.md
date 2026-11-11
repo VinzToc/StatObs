@@ -9,27 +9,21 @@ Application 100 % locale et 100 % hors ligne : aucune donnée n'est envoyée sur
 | `index.html` | Accueil : base élèves Mes Apps EPS, choix des observateurs et pratiquants, activité, observables (avec observables types par activité) |
 | `panneau_saisie.html` | Saisie : un compteur par observable, onglets pour passer d'un pratiquant à l'autre |
 | `statistiques.html` | Radar, synthèse, **bilan du coach** par pratiquant ; enregistrement et export .xlsx |
-| `eps-core.js` | Base élèves partagée « Mes Apps EPS » (IndexedDB), **inchangée** |
-| `eps-xlsx.js` | Lecture du fichier Mes Apps EPS (.xlsx) et écriture au format type |
+| `eps-core.js` | Base partagée « Mes Apps EPS » (v2.2, copie de celle du portail) |
+| `eps-xlsx.js` | Lecture des sauvegardes StatObs (.xlsx) et partage du fichier exporté |
 | `statobs-bilan.js` | Radar + bilan du coach (référentiel technique par activité) |
 | `statobs.js`, `statobs.css` | Fonctions communes et thème jaune |
 | `manifest.webmanifest`, `sw.js`, `icons/` | PWA : installation et fonctionnement hors ligne |
 | `.nojekyll` | Demande à GitHub Pages de servir les fichiers tels quels |
 
-## Base élèves
+## Base élèves et enregistrement (eps-core.js v2.2)
 
-À l'ouverture, StatObs lit automatiquement la base `MesAppsEPS` de l'appareil (même compte GitHub Pages que Mes Apps EPS).
-Si elle est vide, le bloc « Base élèves » est surligné : charger le fichier **Mes_Apps_EPS_AAAA-MM-JJ.xlsx** (feuille « Élèves ») ou l'export Pronote (.csv).
+- La liste des élèves est lue **automatiquement** dans la base Mes Apps EPS du navigateur (même domaine `vinztoc.github.io`) : elle s'importe dans le portail Mes Apps EPS, jamais dans StatObs.
+- Chaque séance est enregistrée dans Mes Apps EPS en **mode « lignes »** (`EPS.addLigne('statobs', …)`) : une ligne par pratiquant et par observateur. Elle apparaît donc aussi dans l'export général du portail.
+- Bouton **Importer une sauvegarde StatObs (.xlsx)** : fichiers produits par StatObs Élèves ou export général StatObs (plusieurs fichiers à la fois). Seule la feuille « statobs » est lue, la liste des élèves n'est jamais modifiée ; un même fichier importé deux fois ne crée pas de doublon. Rattachement par Nom + Prénom (+ Classe, + Né(e) le si présente) ; les lignes d'élèves introuvables sont signalées.
+- Bouton **Exporter les résultats (.xlsx)** : `StatObs_export_AAAA-MM-JJ.xlsx` (feuilles « Élèves », « statobs », « _meta »), réimportable dans Mes Apps EPS ou dans StatObs sur un autre appareil.
 
-## Export
-
-Le bouton **Exporter les résultats (.xlsx)** produit `Mes_Apps_EPS_StatObs_AAAA-MM-JJ.xlsx`, au format du fichier type :
-
-- feuille **Élèves** : Nom, Prénom, Né(e) le, Classe, Régime ;
-- feuille **statobs** (mode « lignes ») : une ligne par élève et par séance — Nom, Prénom, Né(e) le, Classe, Date, Heure, Activité, Rôle, Observateur(s), Élève(s) observé(s), Durée, Actions positives / négatives / %, Profil, Point fort, Priorité, Objectifs, Bilan du coach, puis Observable n / Nb n ;
-- feuille cachée **_meta** : `statobs | statobs | lignes`.
-
-Le résumé de chaque séance reste aussi enregistré dans la base partagée (`ext.statobs`), comme avant.
+Colonnes de la feuille « statobs » : Nom, Prénom, Né(e) le, Classe, Date, Heure, Activité, Rôle, Observateur(s), Élève(s) observé(s), Durée, Actions positives / négatives / %, Profil, Point fort, Priorité, Objectifs, Bilan du coach, Observable n / Nb n.
 
 ## Bilan du coach
 
@@ -37,10 +31,10 @@ Le bilan est structuré en 6 parties : profil de la séance (niveau, taux d'acti
 Référentiels intégrés : basket-ball, handball, football/futsal, volley-ball, badminton, tennis de table, tennis, rugby, ultimate, course de vitesse/haies/relais, sauts, lancers, course d'orientation, natation, demi-fond, gymnastique/acrosport, escalade, sports de combat, danse/cirque, musculation/step. Une activité non reconnue reçoit des conseils généraux.
 Pour enrichir un référentiel : modifier le tableau `ACTIVITIES` de `statobs-bilan.js` (même fichier dans la version élèves).
 
-## Remplacement de l'ancienne version publiée
+## Identité de l'application
 
-Cette version remplace celle du dépôt `VinzToc/StatObs` (thème violet, Chart.js en ligne, `pwa.js`). `pwa.js` n'est plus utilisé et peut être supprimé ; le nouveau `sw.js` efface l'ancien cache `observation-eps-v1` au premier lancement.
+`manifest.webmanifest` porte `"id": "/StatObs/"`. Ne pas le remettre à `"./"` : sur `vinztoc.github.io`, un id `"./"` ou `"."` désigne la racine du domaine et toutes les applis qui l'utilisent sont confondues par le navigateur (ex. StatObs ouvert sous le nom « Gestion AS »).
 
 ## Mettre à jour l'application
 
-Après modification d'un fichier, augmenter `const VERSION` dans `sw.js` (actuellement `'v2'`) et déposer les fichiers modifiés.
+Après modification d'un fichier, augmenter `const VERSION` dans `sw.js` (actuellement `'v3'`) et déposer les fichiers modifiés.
